@@ -78,7 +78,7 @@ ufw.
 | Group | Packages |
 |---|---|
 | Desktop apps | `vlc`, `libreoffice-fresh`, `obsidian`, `zed`, `okular`, `thunderbird`, `flameshot`, `copyq`, `onlyoffice-bin` (AUR), `zen-browser-bin` (AUR) |
-| Terminal | `ghostty`, `neovim`, `tmux`, `fzf`, `ripgrep`, `fd`, `jq`, `eza`, `bat`, `zoxide` |
+| Terminal | `ghostty`, `neovim`, `tmux`, `fzf`, `ripgrep`, `fd`, `jq`, `eza`, `bat`, `zoxide`, `bind` (`dig`, `host`, `nslookup`) |
 | Toolchains | `go`, `uv` (Python), `bun` (JS/TS), `nvm` with Node LTS |
 | Shell | `zsh` + oh-my-zsh (git clone), powerlevel10k (AUR), zsh completions/autosuggestions/syntax-highlighting/history-substring-search, MesloLGS NF + JetBrains Mono Nerd fonts |
 | Containers / VMs | `docker`, `qemu-full`, `virt-manager` |

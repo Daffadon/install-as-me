@@ -943,6 +943,8 @@ def main():
         "eza",
         "bat",
         "zoxide",
+        # dig/host/nslookup (no standalone package on Arch)
+        "bind",
         # shell
         "zsh",
         "zsh-completions",
