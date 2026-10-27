@@ -41,7 +41,13 @@ EXTRA_AUR = os.environ.get("EXTRA_AUR", "").split()
 # Desktop session SDDM preselects (file name in /usr/share/wayland-sessions).
 SESSION = os.environ.get("SESSION", "plasma")
 # Zen Browser ships as a binary AUR package; everything else below is in extra.
-AUR_PACKAGES = ["zen-browser-bin", "onlyoffice-bin", *EXTRA_AUR]
+AUR_PACKAGES = [
+    "zen-browser-bin",
+    "onlyoffice-bin",
+    "zsh-theme-powerlevel10k-git",
+    "ttf-meslo-nerd-font-powerlevel10k",
+    *EXTRA_AUR,
+]
 WORKDIR = Path("/root/archinstall-daffaputra")
 
 # WhiteSur is the most complete macOS Big Sur port for Linux: it ships a GTK
@@ -317,6 +323,85 @@ install_node() {
     || warn 'nvm: Node.js LTS install failed (run: nvm install --lts)'
 }
 
+configure_shell() {
+  local zshrc="$home/.zshrc" p10k="$home/.p10k.zsh"
+  local ghostty="$home/.config/ghostty/config" ksrc="$home/.config/kglobalshortcutsrc"
+
+  # oh-my-zsh from git so `omz update` keeps working (no pacman package).
+  if [ ! -d "$home/.oh-my-zsh" ]; then
+    runuser -u "$user" -- env HOME="$home" git clone --depth 1 \
+      https://github.com/ohmyzsh/ohmyzsh.git "$home/.oh-my-zsh" >> "$aur_log" 2>&1 \
+      || warn 'oh-my-zsh clone failed; zsh starts without it'
+  fi
+
+  if ! grep -q 'Managed by install-as-me' "$zshrc" 2>/dev/null; then
+    cat > "$zshrc" <<'ZSHRC'
+# Managed by install-as-me.py
+export ZSH="$HOME/.oh-my-zsh"
+ZSH_THEME=""
+plugins=(
+  git
+  zsh-completions
+  zsh-autosuggestions
+  history-substring-search
+  zsh-syntax-highlighting
+)
+
+[ -f "$ZSH/oh-my-zsh.sh" ] && source "$ZSH/oh-my-zsh.sh"
+
+# powerlevel10k from the packaged theme (see zsh-theme-powerlevel10k-git)
+[ -f /usr/share/zsh-theme-powerlevel10k/powerlevel10k.zsh-theme ] \
+  && source /usr/share/zsh-theme-powerlevel10k/powerlevel10k.zsh-theme
+[[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh
+
+# nvm
+[ -s /usr/share/nvm/init-nvm.sh ] && source /usr/share/nvm/init-nvm.sh
+
+alias ls='eza --icons --group-directories-first'
+alias ll='eza -l --icons --group-directories-first'
+alias la='eza -la --icons --group-directories-first'
+alias cat='bat --paging=never'
+command -v zoxide >/dev/null && eval "$(zoxide init zsh)"
+ZSHRC
+  fi
+
+  # p10k ships ready-made configs; the lean preset is the least noisy.
+  if [ ! -f "$p10k" ] && [ -f /usr/share/zsh-theme-powerlevel10k/config/p10k-lean.zsh ]; then
+    cp /usr/share/zsh-theme-powerlevel10k/config/p10k-lean.zsh "$p10k"
+  fi
+
+  install -d "$home/.config/ghostty"
+  if [ ! -f "$ghostty" ]; then
+    cat > "$ghostty" <<'GHOSTTY'
+font-family = JetBrainsMono Nerd Font
+font-size = 11
+cursor-style = block
+window-padding-x = 8
+window-padding-y = 8
+mouse-hide-while-typing = true
+confirm-close-surface = false
+GHOSTTY
+  fi
+
+  # Ctrl+Alt+T for the terminal. Plasma stores app launch shortcuts under
+  # [services][<desktop file>] in kglobalshortcutsrc; complement it with KDE's
+  # default terminal so "Open Terminal" in Dolphin/Kate uses Ghostty too.
+  if ! grep -q 'com.mitchellh.ghostty.desktop' "$ksrc" 2>/dev/null; then
+    printf '\n[services][com.mitchellh.ghostty.desktop]\n_launch=Ctrl+Alt+T,none,Ghostty\n' >> "$ksrc"
+  fi
+  if command -v kwriteconfig6 >/dev/null 2>&1; then
+    runuser -u "$user" -- env HOME="$home" kwriteconfig6 \
+      --file kdeglobals --group General --key TerminalApplication ghostty 2>/dev/null \
+      || warn 'could not set kdeglobals TerminalApplication'
+  fi
+
+  grep -qx /usr/bin/zsh /etc/shells 2>/dev/null \
+    || printf '/usr/bin/zsh\n' >> /etc/shells
+  usermod -s /usr/bin/zsh "$user" || warn 'could not set zsh as the login shell'
+
+  chown -R "$user:$user" "$home/.config" "$home/.zshrc" "$home/.p10k.zsh" 2>/dev/null
+}
+
 configure_groups() {
   # docker/libvirt restrict access to group members, and virt-manager expects
   # the libvirt NAT network to be marked autostart or it reports "no network".
@@ -530,6 +615,7 @@ fi
 install_node
 configure_groups
 configure_session
+configure_shell
 
 if @@WANT_THEME@@; then
   if [ ! -d "/usr/share/plasma/desktoptheme/@@PLASMA@@" ] || [ ! -d "/usr/share/themes/@@GTK@@" ]; then
@@ -788,6 +874,17 @@ def main():
         "ripgrep",
         "fd",
         "jq",
+        "eza",
+        "bat",
+        "zoxide",
+        # shell
+        "zsh",
+        "zsh-completions",
+        "zsh-autosuggestions",
+        "zsh-syntax-highlighting",
+        "zsh-history-substring-search",
+        "ghostty",
+        "ttf-jetbrains-mono-nerd",
         # containers, VMs, networking
         "docker",
         "qemu-full",
