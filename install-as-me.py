@@ -48,6 +48,8 @@ AUR_PACKAGES = [
     "zen-browser-bin",
     "onlyoffice-bin",
     "cloudflare-warp-bin",
+    "tilix",
+    "dbx",
     "zsh-theme-powerlevel10k-git",
     "ttf-meslo-nerd-font-powerlevel10k",
     *EXTRA_AUR,

@@ -78,11 +78,11 @@ ufw.
 | Group | Packages |
 |---|---|
 | Desktop apps | `vlc`, `libreoffice-fresh`, `obsidian`, `zed`, `okular`, `thunderbird`, `flameshot`, `copyq`, `onlyoffice-bin` (AUR), `zen-browser-bin` (AUR) |
-| Terminal | `ghostty`, `neovim`, `tmux`, `fzf`, `ripgrep`, `fd`, `jq`, `eza`, `bat`, `zoxide`, `bind` (`dig`, `host`, `nslookup`) |
+| Terminal | `ghostty`, `tilix` (AUR), `neovim`, `tmux`, `fzf`, `ripgrep`, `fd`, `jq`, `eza`, `bat`, `zoxide`, `bind` (`dig`, `host`, `nslookup`) |
 | Integration | `gst-plugins-good`/`bad`/`ugly`, `gst-libav`, `7zip`, `unrar`, `gvfs-mtp`, `gvfs-gphoto2`, `noto-fonts-cjk`, `lm_sensors`, `wl-clipboard` |
-| Toolchains | `go`, `uv` (Python), `bun` (JS/TS), `nvm` with Node LTS |
+| Toolchains | `go`, `uv` (Python), `bun` (JS/TS), `nvm` with Node LTS, `dbx` (AUR, database GUI) |
 | Shell | `zsh` + oh-my-zsh (git clone), powerlevel10k (AUR), zsh completions/autosuggestions/syntax-highlighting/history-substring-search, MesloLGS NF + JetBrains Mono Nerd fonts |
-| Containers / VMs | `docker`, `qemu-full`, `virt-manager` |
+| Containers / VMs | `docker`, `qemu-full`, `virt-manager` (`libvirtd` enabled, user in the `libvirt` group, NAT network autostart) |
 | Remote / network | `openssh`, `tailscale`, `cloudflare-warp-bin` (AUR) |
 | Theme | `whitesur-gtk-theme`, `whitesur-icon-theme`, `whitesur-cursor-theme-git`, `whitesur-kde-theme`, `kvantum`, `milou` (search applet used by the WhiteSur panel layout) |
 
