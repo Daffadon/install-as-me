@@ -104,6 +104,12 @@ Everything below runs as one guarded script inside the target chroot. archinstal
 runs custom commands **before** `genfstab`, so the script always exits 0 and
 reports problems as `WARNING:` lines instead of aborting a finished install.
 
+archinstall pipes custom-command output and never prints it, so the script writes
+progress straight to `/dev/tty`: a banner, nine numbered phases and the live
+output of every long-running command (pacman, git, makepkg, yay, grub-mkconfig).
+The same lines go to `/var/log/postinstall-aur.log`, which also holds output when
+no terminal is attached.
+
 - **yay** — `yay-bin` built as the user (makepkg refuses root), installed with
   `pacman -U`. If that fails, AUR packages are built directly with
   `makepkg -si` through a temporary `NOPASSWD` sudoers drop-in that is removed

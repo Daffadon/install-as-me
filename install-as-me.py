@@ -203,6 +203,26 @@ warn() { printf 'WARNING: %s\n' "$*" >&2; }
 
 aur_log=/var/log/postinstall-aur.log
 
+# archinstall captures the output of custom commands (SysCommand with
+# peek_output=False), so ordinary stdout never reaches the installer's console.
+# Write progress to /dev/tty as well, which is the terminal arch-chroot inherited.
+say() {
+  printf '%s\n' "$*" >> "$aur_log"
+  [ -w /dev/tty ] && printf '%s\n' "$*" > /dev/tty
+  return 0
+}
+
+stream() {
+  # Run a command, log everything and mirror it to the console when possible.
+  if [ -w /dev/tty ]; then
+    "$@" 2>&1 | tee -a "$aur_log" > /dev/tty
+    return "${PIPESTATUS[0]}"
+  fi
+  "$@" >> "$aur_log" 2>&1
+}
+
+phase() { say ""; say "==> $*"; }
+
 aur_fail() {
   warn "$*"
   [ -s "$aur_log" ] && tail -n 12 "$aur_log" >&2
@@ -236,19 +256,18 @@ install_yay() {
   # Build inside the user's home: /tmp is a small, not necessarily user-writable
   # tmpfs while the ISO's chroot is active (it filled up mid-build otherwise).
   local tmp="$home/.cache/yay-bin"
-  printf '=== %s: bootstrap yay-bin\n' "$(date -Is)" >> "$aur_log"
+  say "=== $(date -Is): bootstrap yay-bin"
   have_space || return 1
-  pacman -S --needed --noconfirm base-devel git >> "$aur_log" 2>&1 \
+  stream pacman -S --needed --noconfirm base-devel git \
     || { aur_fail 'base-devel/git install failed'; return 1; }
   install -d -o "$user" -g "$user" "$home/.cache"
   rm -rf "$tmp"
-  runuser -u "$user" -- env HOME="$home" git clone --depth 1 \
-    https://aur.archlinux.org/yay-bin.git "$tmp" >> "$aur_log" 2>&1 \
+  stream runuser -u "$user" -- env HOME="$home" git clone --depth 1 \
+    https://aur.archlinux.org/yay-bin.git "$tmp" \
     || { aur_fail 'yay-bin clone failed'; rm -rf "$tmp"; return 1; }
-  runuser -u "$user" -- env HOME="$home" bash -c "cd $tmp && makepkg -f --noconfirm" \
-    >> "$aur_log" 2>&1 \
+  stream runuser -u "$user" -- env HOME="$home" bash -c "cd $tmp && makepkg -f --noconfirm" \
     || { aur_fail 'yay-bin build failed'; rm -rf "$tmp"; return 1; }
-  pacman -U --noconfirm "$tmp"/yay-bin-*.pkg.tar.zst >> "$aur_log" 2>&1 \
+  stream pacman -U --noconfirm "$tmp"/yay-bin-*.pkg.tar.zst \
     || { aur_fail 'yay-bin install failed'; rm -rf "$tmp"; return 1; }
   rm -rf "$tmp"
 }
@@ -265,8 +284,8 @@ enable_nopasswd() {
 
 install_aur() {
   enable_nopasswd || return 1
-  printf '=== %s: yay -S --needed %s\n' "$(date -Is)" "$*" >> "$aur_log"
-  runuser -u "$user" -- env HOME="$home" yay -S --noconfirm --needed "$@" >> "$aur_log" 2>&1
+  say "=== $(date -Is): yay -S --needed $*"
+  stream runuser -u "$user" -- env HOME="$home" yay -S --noconfirm --needed "$@"
   local rc=$?
   rm -f "$sudoers_dropin"
   [ "$rc" -ne 0 ] && aur_fail "yay -S $* failed (rc=$rc)"
@@ -282,16 +301,16 @@ aur_build() {
   install -d -o "$user" -g "$user" "$home/.cache/aur-build"
   for pkg in "$@"; do
     tmp="$home/.cache/aur-build/$pkg"
-    printf '=== %s: makepkg %s\n' "$(date -Is)" "$pkg" >> "$aur_log"
+    say "=== $(date -Is): makepkg $pkg"
     rm -rf "$tmp"
-    if ! runuser -u "$user" -- env HOME="$home" git clone --depth 1 \
-        "https://aur.archlinux.org/$pkg.git" "$tmp" >> "$aur_log" 2>&1; then
+    if ! stream runuser -u "$user" -- env HOME="$home" git clone --depth 1 \
+        "https://aur.archlinux.org/$pkg.git" "$tmp"; then
       aur_fail "clone failed for $pkg"
       rc=1
       continue
     fi
-    if ! runuser -u "$user" -- env HOME="$home" bash -c \
-        "cd $tmp && makepkg -si --noconfirm" >> "$aur_log" 2>&1; then
+    if ! stream runuser -u "$user" -- env HOME="$home" bash -c \
+        "cd $tmp && makepkg -si --noconfirm"; then
       aur_fail "build failed for $pkg"
       rc=1
     fi
@@ -333,7 +352,7 @@ enable_optional_services() {
   # enable it here instead.
   if [ -f /usr/lib/systemd/system/warp-svc.service ] \
       || [ -f /usr/lib/systemd/system/warp-svc.service.masked ]; then
-    systemctl enable warp-svc >> "$aur_log" 2>&1 \
+    stream systemctl enable warp-svc \
       || warn 'could not enable warp-svc'
   fi
 }
@@ -364,7 +383,7 @@ configure_bootloader() {
   fi
 
   if [ -d /boot/grub ]; then
-    grub-mkconfig -o /boot/grub/grub.cfg >> "$aur_log" 2>&1 \
+    stream grub-mkconfig -o /boot/grub/grub.cfg \
       || { aur_fail 'grub-mkconfig failed'; return 1; }
   fi
 }
@@ -375,8 +394,8 @@ configure_shell() {
 
   # oh-my-zsh from git so `omz update` keeps working (no pacman package).
   if [ ! -d "$home/.oh-my-zsh" ]; then
-    runuser -u "$user" -- env HOME="$home" git clone --depth 1 \
-      https://github.com/ohmyzsh/ohmyzsh.git "$home/.oh-my-zsh" >> "$aur_log" 2>&1 \
+    stream runuser -u "$user" -- env HOME="$home" git clone --depth 1 \
+      https://github.com/ohmyzsh/ohmyzsh.git "$home/.oh-my-zsh" \
       || warn 'oh-my-zsh clone failed; zsh starts without it'
   fi
 
@@ -661,10 +680,16 @@ CFG
   cp -a "$home/.local/bin/whitesur-first-login.sh" /etc/skel/.local/bin/
 }
 
+say "==> post-install extras: up to 10 minutes. This is the installer output;"
+say "    the full log is kept at /var/log/postinstall-aur.log"
+say "    (from another TTY: /mnt/archinstall/var/log/postinstall-aur.log)"
+
+phase "[1/9] AUR helper (yay)"
 if @@WANT_YAY@@; then
   install_yay || warn 'yay is unavailable; AUR packages fall back to makepkg'
 fi
 
+phase "[2/9] AUR packages: @@AUR_PACKAGES@@"
 if @@WANT_APPS@@; then
   if ! command -v yay >/dev/null 2>&1 || ! install_aur @@AUR_PACKAGES@@; then
     warn 'installing @@AUR_PACKAGES@@ directly with makepkg'
@@ -675,14 +700,26 @@ if @@WANT_APPS@@; then
   done
 fi
 
+phase "[3/9] Node.js LTS via nvm"
 install_node
+
+phase "[4/9] optional services"
 enable_optional_services
+
+phase "[5/9] groups: docker, libvirt"
 configure_groups
+
+phase "[6/9] default session: @@SESSION@@"
 configure_session
+
+phase "[7/9] shell: zsh, oh-my-zsh, powerlevel10k, ghostty, copyq"
 configure_shell
+
+phase "[8/9] bootloader: os-prober / grub"
 configure_bootloader
 
 if @@WANT_THEME@@; then
+  phase "[9/9] WhiteSur theme (GTK, icons, Plasma, SDDM)"
   if [ ! -d "/usr/share/plasma/desktoptheme/@@PLASMA@@" ] || [ ! -d "/usr/share/themes/@@GTK@@" ]; then
     if ! command -v yay >/dev/null 2>&1 || ! install_aur \
         whitesur-gtk-theme whitesur-icon-theme whitesur-cursor-theme-git whitesur-kde-theme; then
@@ -699,6 +736,8 @@ if @@WANT_THEME@@; then
   fi
 fi
 
+say ""
+say "==> post-install extras finished"
 exit 0
 """
 
