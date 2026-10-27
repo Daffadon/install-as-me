@@ -40,6 +40,9 @@ EXTRA_PACKAGES = os.environ.get("EXTRA_PACKAGES", "").split()
 EXTRA_AUR = os.environ.get("EXTRA_AUR", "").split()
 # Desktop session SDDM preselects (file name in /usr/share/wayland-sessions).
 SESSION = os.environ.get("SESSION", "plasma")
+# Dual boot: use GRUB (the only bootloader that can list another OS) and
+# os-prober, so an existing Windows/other Linux appears in the menu.
+DUAL_BOOT = os.environ.get("DUAL_BOOT", "0") == "1"
 # Zen Browser ships as a binary AUR package; everything else below is in extra.
 AUR_PACKAGES = [
     "zen-browser-bin",
@@ -321,6 +324,37 @@ install_node() {
   runuser -u "$user" -- env HOME="$home" bash -lc \
     "source $init && nvm install --lts && nvm alias default node" \
     || warn 'nvm: Node.js LTS install failed (run: nvm install --lts)'
+}
+
+configure_bootloader() {
+  # archinstall writes /etc/default/grub but never enables os-prober, so with
+  # GRUB installed a second operating system is simply missing from the menu.
+  local def=/etc/default/grub found
+  [ -f "$def" ] || return 0
+
+  if command -v os-prober >/dev/null 2>&1; then
+    if grep -q '^#\?GRUB_DISABLE_OS_PROBER' "$def"; then
+      sed -i 's/^#\?GRUB_DISABLE_OS_PROBER=.*/GRUB_DISABLE_OS_PROBER=false/' "$def"
+    else
+      printf 'GRUB_DISABLE_OS_PROBER=false\n' >> "$def"
+    fi
+  else
+    warn 'os-prober is missing; GRUB will not list other operating systems'
+  fi
+
+  found=$(os-prober 2>/dev/null | cut -d: -f1,2 | tr '\n' ' ')
+  if [ -n "$found" ]; then
+    printf '=== %s: other OS detected: %s\n' "$(date -Is)" "$found" >> "$aur_log"
+    # A zero timeout hides the menu entirely.
+    if grep -q '^GRUB_TIMEOUT=0$' "$def"; then
+      sed -i 's/^GRUB_TIMEOUT=0$/GRUB_TIMEOUT=5/' "$def"
+    fi
+  fi
+
+  if [ -d /boot/grub ]; then
+    grub-mkconfig -o /boot/grub/grub.cfg >> "$aur_log" 2>&1 \
+      || { aur_fail 'grub-mkconfig failed'; return 1; }
+  fi
 }
 
 configure_shell() {
@@ -616,6 +650,7 @@ install_node
 configure_groups
 configure_session
 configure_shell
+configure_bootloader
 
 if @@WANT_THEME@@; then
   if [ ! -d "/usr/share/plasma/desktoptheme/@@PLASMA@@" ] || [ ! -d "/usr/share/themes/@@GTK@@" ]; then
@@ -894,6 +929,9 @@ def main():
         "milou",
         *EXTRA_PACKAGES,
     ]
+    if DUAL_BOOT:
+        # lets GRUB list an existing Windows/other Linux
+        packages.append("os-prober")
     if nvidia_open:
         packages += ["nvidia-settings", "nvidia-prime"]
         if has_intel:
@@ -921,8 +959,10 @@ def main():
         "firmware_optdeps": [],
         "swap": {"enabled": True, "algorithm": "zstd"},
         "bootloader_config": {
-            "bootloader": "Systemd-boot" if uefi else "Grub",
-            "uki": uefi,
+            # GRUB is the only option that can list another installed OS
+            # (via os-prober); DUAL_BOOT forces it and disables UKI.
+            "bootloader": "Grub" if (DUAL_BOOT or not uefi) else "Systemd-boot",
+            "uki": uefi and not DUAL_BOOT,
             "removable": False,
         },
         "disk_config": disk_config,
