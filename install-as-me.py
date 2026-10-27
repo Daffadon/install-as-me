@@ -307,8 +307,11 @@ configure_groups() {
 }
 
 dconf_write() {
-  runuser -u "$user" -- env HOME="$home" dbus-run-session -- dconf write "$1" "$2" \
-    || warn "dconf write $1 failed"
+  # gvfs prints "A connection to the bus can't be made" on a private bus even
+  # when the write succeeds, so only surface output when dconf actually fails.
+  local out
+  out=$(runuser -u "$user" -- env HOME="$home" dbus-run-session -- \
+    dconf write "$1" "$2" 2>&1) || warn "dconf write $1 failed: $out"
 }
 
 apply_theme() {
@@ -414,9 +417,13 @@ CFG
   fi
 
   chown -R "$user:$user" "$home/.config" "$home/.local"
+  # Mirror only what was written here; copying the whole .config would leak
+  # whatever the live session had already created.
   install -d /etc/skel/.config /etc/skel/.local/bin
-  cp -a "$home/.config/." /etc/skel/.config/
-  cp -a "$home/.local/bin/." /etc/skel/.local/bin/
+  for item in kdeglobals plasmarc kwinrc kcminputrc Kvantum gtk-3.0 gtk-4.0 autostart; do
+    cp -a "$home/.config/$item" /etc/skel/.config/ || warn "could not copy $item to /etc/skel"
+  done
+  cp -a "$home/.local/bin/whitesur-first-login.sh" /etc/skel/.local/bin/
 }
 
 if @@WANT_YAY@@; then
