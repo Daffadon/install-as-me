@@ -77,11 +77,12 @@ ufw.
 
 | Group | Packages |
 |---|---|
-| Desktop apps | `vlc`, `libreoffice-fresh`, `obsidian`, `zed`, `okular`, `thunderbird`, `flameshot`, `onlyoffice-bin` (AUR), `zen-browser-bin` (AUR) |
+| Desktop apps | `vlc`, `libreoffice-fresh`, `obsidian`, `zed`, `okular`, `thunderbird`, `flameshot`, `copyq`, `onlyoffice-bin` (AUR), `zen-browser-bin` (AUR) |
 | Terminal | `ghostty`, `neovim`, `tmux`, `fzf`, `ripgrep`, `fd`, `jq`, `eza`, `bat`, `zoxide` |
-| Shell | `zsh` + oh-my-zsh (git clone), powerlevel10k (AUR), zsh completions/autosuggestions/syntax-highlighting/history-substring-search, MesloLGS NF + JetBrains Mono Nerd fonts, `nvm` with Node LTS |
+| Toolchains | `go`, `uv` (Python), `bun` (JS/TS), `nvm` with Node LTS |
+| Shell | `zsh` + oh-my-zsh (git clone), powerlevel10k (AUR), zsh completions/autosuggestions/syntax-highlighting/history-substring-search, MesloLGS NF + JetBrains Mono Nerd fonts |
 | Containers / VMs | `docker`, `qemu-full`, `virt-manager` |
-| Remote / network | `openssh`, `tailscale` |
+| Remote / network | `openssh`, `tailscale`, `cloudflare-warp-bin` (AUR) |
 | Theme | `whitesur-gtk-theme`, `whitesur-icon-theme`, `whitesur-cursor-theme-git`, `whitesur-kde-theme`, `kvantum`, `milou` (search applet used by the WhiteSur panel layout) |
 
 **Services enabled:** `sshd`, `docker`, `libvirtd`, `tailscaled`; `ufw allow 22/tcp`.
@@ -156,6 +157,8 @@ Known caveats:
 - The WhiteSur panel layout asks for `org.kde.plasma.splitdigitalclock`, which no
   repository packages; the layout is rewritten to `org.kde.plasma.digitalclock`.
 - `steam` is not installed: it needs the `multilib` repository enabled.
+- Cloudflare WARP is installed and `warp-svc` is enabled, but the client still
+  needs one manual registration: `warp-cli registration new`.
 
 ## Verified / not verified
 

@@ -43,10 +43,11 @@ SESSION = os.environ.get("SESSION", "plasma")
 # Dual boot: use GRUB (the only bootloader that can list another OS) and
 # os-prober, so an existing Windows/other Linux appears in the menu.
 DUAL_BOOT = os.environ.get("DUAL_BOOT", "0") == "1"
-# Zen Browser ships as a binary AUR package; everything else below is in extra.
+# AUR-only packages (everything else below is in extra).
 AUR_PACKAGES = [
     "zen-browser-bin",
     "onlyoffice-bin",
+    "cloudflare-warp-bin",
     "zsh-theme-powerlevel10k-git",
     "ttf-meslo-nerd-font-powerlevel10k",
     *EXTRA_AUR,
@@ -326,6 +327,17 @@ install_node() {
     || warn 'nvm: Node.js LTS install failed (run: nvm install --lts)'
 }
 
+enable_optional_services() {
+  # Cloudflare WARP only exists once its AUR package is installed, and a
+  # missing unit in the archinstall services list aborts the whole install, so
+  # enable it here instead.
+  if [ -f /usr/lib/systemd/system/warp-svc.service ] \
+      || [ -f /usr/lib/systemd/system/warp-svc.service.masked ]; then
+    systemctl enable warp-svc >> "$aur_log" 2>&1 \
+      || warn 'could not enable warp-svc'
+  fi
+}
+
 configure_bootloader() {
   # archinstall writes /etc/default/grub but never enables os-prober, so with
   # GRUB installed a second operating system is simply missing from the menu.
@@ -391,6 +403,9 @@ plugins=(
 # nvm
 [ -s /usr/share/nvm/init-nvm.sh ] && source /usr/share/nvm/init-nvm.sh
 
+# go install / bun add -g put binaries here
+export PATH="$HOME/.bun/bin:$HOME/go/bin:$PATH"
+
 alias ls='eza --icons --group-directories-first'
 alias ll='eza -l --icons --group-directories-first'
 alias la='eza -la --icons --group-directories-first'
@@ -415,6 +430,20 @@ window-padding-y = 8
 mouse-hide-while-typing = true
 confirm-close-surface = false
 GHOSTTY
+  fi
+
+  # CopyQ is a tray clipboard manager; it needs to be started with the session.
+  install -d "$home/.config/autostart"
+  if [ ! -f "$home/.config/autostart/copyq.desktop" ]; then
+    cat > "$home/.config/autostart/copyq.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=CopyQ
+Exec=copyq --start-server
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+DESKTOP
   fi
 
   # Ctrl+Alt+T for the terminal. Plasma stores app launch shortcuts under
@@ -647,6 +676,7 @@ if @@WANT_APPS@@; then
 fi
 
 install_node
+enable_optional_services
 configure_groups
 configure_session
 configure_shell
@@ -902,6 +932,7 @@ def main():
         "okular",
         "thunderbird",
         "flameshot",
+        "copyq",
         # terminal baseline
         "neovim",
         "tmux",
@@ -920,6 +951,10 @@ def main():
         "zsh-history-substring-search",
         "ghostty",
         "ttf-jetbrains-mono-nerd",
+        # developer toolchains
+        "go",
+        "uv",
+        "bun",
         # containers, VMs, networking
         "docker",
         "qemu-full",
