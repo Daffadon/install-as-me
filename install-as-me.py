@@ -160,6 +160,14 @@ home='/home/@@USER@@'
 
 warn() { printf 'WARNING: %s\n' "$*" >&2; }
 
+aur_log=/var/log/postinstall-aur.log
+
+aur_fail() {
+  warn "$*"
+  [ -s "$aur_log" ] && tail -n 12 "$aur_log" >&2
+  return 0
+}
+
 # sshd is enabled by default, but archinstall's ufw setup denies inbound traffic.
 if command -v ufw >/dev/null 2>&1; then
   ufw allow 22/tcp >/dev/null 2>&1 || warn 'could not open the SSH port in ufw'
@@ -168,34 +176,71 @@ fi
 install_yay() {
   command -v yay >/dev/null 2>&1 && return 0
 
+  if ! getent hosts aur.archlinux.org >/dev/null 2>&1; then
+    aur_fail 'cannot resolve aur.archlinux.org (DNS/network in the chroot)'
+    return 1
+  fi
+
   # makepkg refuses to run as root: build as the user, install as root.
   local tmp=/tmp/yay-bin
-  pacman -S --needed --noconfirm base-devel git || { warn 'base-devel install failed'; return 1; }
+  printf '=== %s: bootstrap yay-bin\n' "$(date -Is)" >> "$aur_log"
+  pacman -S --needed --noconfirm base-devel git >> "$aur_log" 2>&1 \
+    || { aur_fail 'base-devel/git install failed'; return 1; }
   rm -rf "$tmp"
-  runuser -u "$user" -- env HOME="$home" git clone --depth 1 https://aur.archlinux.org/yay-bin.git "$tmp" \
-    || { warn 'yay-bin clone failed'; rm -rf "$tmp"; return 1; }
+  runuser -u "$user" -- env HOME="$home" git clone --depth 1 \
+    https://aur.archlinux.org/yay-bin.git "$tmp" >> "$aur_log" 2>&1 \
+    || { aur_fail 'yay-bin clone failed'; rm -rf "$tmp"; return 1; }
   runuser -u "$user" -- env HOME="$home" bash -c "cd $tmp && makepkg -f --noconfirm" \
-    || { warn 'yay-bin build failed'; rm -rf "$tmp"; return 1; }
-  pacman -U --noconfirm "$tmp"/yay-bin-*.pkg.tar.zst \
-    || { warn 'yay-bin install failed'; rm -rf "$tmp"; return 1; }
+    >> "$aur_log" 2>&1 \
+    || { aur_fail 'yay-bin build failed'; rm -rf "$tmp"; return 1; }
+  pacman -U --noconfirm "$tmp"/yay-bin-*.pkg.tar.zst >> "$aur_log" 2>&1 \
+    || { aur_fail 'yay-bin install failed'; rm -rf "$tmp"; return 1; }
   rm -rf "$tmp"
 }
 
-install_aur() {
-  # yay installs through sudo, and the chroot cannot answer a password prompt.
-  local dropin=/etc/sudoers.d/99-postinstall-nopasswd
-  local log=/var/log/postinstall-aur.log
-  printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$user" > "$dropin" \
+sudoers_dropin=/etc/sudoers.d/99-postinstall-nopasswd
+
+enable_nopasswd() {
+  # Both yay and the makepkg fallback install through sudo, and the chroot
+  # cannot answer a password prompt.
+  printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$user" > "$sudoers_dropin" \
     || { warn 'cannot write sudoers drop-in'; return 1; }
-  chmod 440 "$dropin"
-  printf '=== %s: yay -S --needed %s\n' "$(date -Is)" "$*" >> "$log"
-  runuser -u "$user" -- env HOME="$home" yay -S --noconfirm --needed "$@" >> "$log" 2>&1
+  chmod 440 "$sudoers_dropin"
+}
+
+install_aur() {
+  enable_nopasswd || return 1
+  printf '=== %s: yay -S --needed %s\n' "$(date -Is)" "$*" >> "$aur_log"
+  runuser -u "$user" -- env HOME="$home" yay -S --noconfirm --needed "$@" >> "$aur_log" 2>&1
   local rc=$?
-  rm -f "$dropin"
-  if [ "$rc" -ne 0 ]; then
-    warn "yay -S $* failed (rc=$rc); last lines of $log:"
-    tail -n 15 "$log" >&2
-  fi
+  rm -f "$sudoers_dropin"
+  [ "$rc" -ne 0 ] && aur_fail "yay -S $* failed (rc=$rc)"
+  return "$rc"
+}
+
+aur_build() {
+  # Fallback without a helper: clone each package, build and install with makepkg.
+  local pkg tmp rc=0
+  enable_nopasswd || return 1
+  mkdir -p /tmp/aur-build
+  for pkg in "$@"; do
+    tmp="/tmp/aur-build/$pkg"
+    printf '=== %s: makepkg %s\n' "$(date -Is)" "$pkg" >> "$aur_log"
+    rm -rf "$tmp"
+    if ! runuser -u "$user" -- env HOME="$home" git clone --depth 1 \
+        "https://aur.archlinux.org/$pkg.git" "$tmp" >> "$aur_log" 2>&1; then
+      aur_fail "clone failed for $pkg"
+      rc=1
+      continue
+    fi
+    if ! runuser -u "$user" -- env HOME="$home" bash -c \
+        "cd $tmp && makepkg -si --noconfirm" >> "$aur_log" 2>&1; then
+      aur_fail "build failed for $pkg"
+      rc=1
+    fi
+  done
+  rm -rf /tmp/aur-build
+  rm -f "$sudoers_dropin"
   return "$rc"
 }
 
@@ -342,34 +387,34 @@ CFG
 }
 
 if @@WANT_YAY@@; then
-  install_yay || warn 'yay is unavailable; skipping AUR packages'
+  install_yay || warn 'yay is unavailable; AUR packages fall back to makepkg'
 fi
 
 if @@WANT_APPS@@; then
-  if command -v yay >/dev/null 2>&1; then
-    install_aur @@AUR_PACKAGES@@ \
-      || warn 'AUR install failed, see /var/log/postinstall-aur.log'
-    for pkg in @@AUR_PACKAGES@@; do
-      pacman -Q "$pkg" >/dev/null 2>&1 || warn "AUR package $pkg is still missing"
-    done
-  else
-    warn 'yay is unavailable; skipping @@AUR_PACKAGES@@'
+  if ! command -v yay >/dev/null 2>&1 || ! install_aur @@AUR_PACKAGES@@; then
+    warn 'installing @@AUR_PACKAGES@@ directly with makepkg'
+    aur_build @@AUR_PACKAGES@@
   fi
+  for pkg in @@AUR_PACKAGES@@; do
+    pacman -Q "$pkg" >/dev/null 2>&1 || warn "AUR package $pkg is still missing"
+  done
 fi
 
 install_node
 configure_groups
 
 if @@WANT_THEME@@; then
-  if command -v yay >/dev/null 2>&1; then
-    [ -d /usr/share/themes/@@GTK@@ ] || install_aur \
-      whitesur-gtk-theme whitesur-icon-theme whitesur-cursor-theme-git whitesur-kde-theme \
-      || warn 'WhiteSur packages failed to install'
-    if [ -d /usr/share/themes/@@GTK@@ ]; then
-      apply_theme
-    else
-      warn 'WhiteSur theme is not installed; desktop keeps its default look'
+  if [ ! -d /usr/share/themes/@@GTK@@ ]; then
+    if ! command -v yay >/dev/null 2>&1 || ! install_aur \
+        whitesur-gtk-theme whitesur-icon-theme whitesur-cursor-theme-git whitesur-kde-theme; then
+      warn 'installing WhiteSur directly with makepkg'
+      aur_build whitesur-gtk-theme whitesur-icon-theme whitesur-cursor-theme-git whitesur-kde-theme
     fi
+  fi
+  if [ -d /usr/share/themes/@@GTK@@ ]; then
+    apply_theme
+  else
+    warn 'WhiteSur theme is not installed; desktop keeps its default look'
   fi
 fi
 
@@ -394,8 +439,8 @@ def extras_script():
         "WALLPAPER": theme["wallpaper"],
         "PREFER_DARK": theme["prefer_dark"],
         "WANT_YAY": "true" if INSTALL_YAY else "false",
-        "WANT_THEME": "true" if INSTALL_YAY and INSTALL_THEME else "false",
-        "WANT_APPS": "true" if INSTALL_YAY and AUR_PACKAGES else "false",
+        "WANT_THEME": "true" if INSTALL_THEME else "false",
+        "WANT_APPS": "true" if AUR_PACKAGES else "false",
         "AUR_PACKAGES": " ".join(AUR_PACKAGES),
     }.items():
         script = script.replace(f"@@{token}@@", value)
