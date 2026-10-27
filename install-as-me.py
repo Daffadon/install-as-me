@@ -184,12 +184,18 @@ install_yay() {
 install_aur() {
   # yay installs through sudo, and the chroot cannot answer a password prompt.
   local dropin=/etc/sudoers.d/99-postinstall-nopasswd
+  local log=/var/log/postinstall-aur.log
   printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$user" > "$dropin" \
     || { warn 'cannot write sudoers drop-in'; return 1; }
   chmod 440 "$dropin"
-  runuser -u "$user" -- env HOME="$home" yay -S --noconfirm --needed "$@"
+  printf '=== %s: yay -S --needed %s\n' "$(date -Is)" "$*" >> "$log"
+  runuser -u "$user" -- env HOME="$home" yay -S --noconfirm --needed "$@" >> "$log" 2>&1
   local rc=$?
   rm -f "$dropin"
+  if [ "$rc" -ne 0 ]; then
+    warn "yay -S $* failed (rc=$rc); last lines of $log:"
+    tail -n 15 "$log" >&2
+  fi
   return "$rc"
 }
 
@@ -341,7 +347,13 @@ fi
 
 if @@WANT_APPS@@; then
   if command -v yay >/dev/null 2>&1; then
-    install_aur @@AUR_PACKAGES@@ || warn 'some AUR packages failed to install'
+    install_aur @@AUR_PACKAGES@@ \
+      || warn 'AUR install failed, see /var/log/postinstall-aur.log'
+    for pkg in @@AUR_PACKAGES@@; do
+      pacman -Q "$pkg" >/dev/null 2>&1 || warn "AUR package $pkg is still missing"
+    done
+  else
+    warn 'yay is unavailable; skipping @@AUR_PACKAGES@@'
   fi
 fi
 
@@ -581,6 +593,7 @@ def main():
         "mesa",
         "mesa-utils",
         "openssh",
+        "sudo",
         "kvantum",
         # desktop apps
         "vlc",
