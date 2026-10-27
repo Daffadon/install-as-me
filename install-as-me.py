@@ -3,9 +3,10 @@
 
 Run from the Arch ISO as root. This WIPES the selected disk.
 
-The hostname is prompted for unless HOSTNAME is exported. Post-install extras
-(yay, the WhiteSur "Big Sur" theme for Plasma/GTK/Cinnamon/SDDM) are applied in
-the chroot and never abort the installation.
+The hostname and username are prompted for (the hostname defaults to "archy")
+unless HOSTNAME/USERNAME are exported. Post-install extras (yay, the WhiteSur
+"Big Sur" theme for Plasma/GTK/Cinnamon/SDDM) are applied in the chroot and
+never abort the installation.
 """
 import getpass
 import json
@@ -18,9 +19,11 @@ import uuid
 from pathlib import Path
 
 DISK = Path(os.environ["DISK"]) if os.environ.get("DISK") else None
-HOSTNAME = os.environ.get("HOSTNAME") or None  # None -> prompt
+# None -> prompt; the hostname prompt falls back to DEFAULT_HOSTNAME.
+HOSTNAME = os.environ.get("HOSTNAME") or None
+USERNAME = os.environ.get("USERNAME") or None
+DEFAULT_HOSTNAME = "archy"
 TIMEZONE = os.environ.get("TIMEZONE", "Asia/Jakarta")
-USERNAME = os.environ.get("USERNAME", "daffaputra")
 KB_LAYOUT = os.environ.get("KB_LAYOUT", "us")
 SYS_LANG = os.environ.get("SYS_LANG", "en_US.UTF-8")
 SYS_ENC = os.environ.get("SYS_ENC", "UTF-8")
@@ -133,7 +136,7 @@ def validate_packages(packages):
 
 
 def ask_hostname():
-    default = HOSTNAME or ""
+    default = HOSTNAME or DEFAULT_HOSTNAME
     while True:
         suffix = f" [{default}]" if default else ""
         try:
@@ -150,6 +153,27 @@ def ask_hostname():
         return value
 
 
+def ask_username():
+    default = USERNAME or ""
+    while True:
+        suffix = f" [{default}]" if default else ""
+        try:
+            answer = input(f"Username{suffix}: ").strip()
+        except EOFError:
+            die("no username given")
+        value = answer or default
+        if not value:
+            print("Username cannot be empty.")
+            continue
+        if value == "root":
+            print("'root' is the superuser account; pick another name.")
+            continue
+        if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}\$?", value):
+            print(f"Invalid username: {value!r} (lowercase, digits, '-', '_')")
+            continue
+        return value
+
+
 EXTRAS_SCRIPT = r"""# Post-install extras, executed inside the target chroot as root.
 # archinstall runs custom commands *before* genfstab, so this script must never
 # exit non-zero: every optional step is reported and skipped on failure.
@@ -157,6 +181,11 @@ set -u
 
 user='@@USER@@'
 home='/home/@@USER@@'
+
+# Some AUR install scripts run `clear` unconditionally and die with a plain
+# "TERM environment variable not set" in a non-tty chroot (whitesur-gtk-theme
+# is one of them, and it hides the error).
+export TERM=xterm-256color
 
 warn() { printf 'WARNING: %s\n' "$*" >&2; }
 
@@ -222,7 +251,8 @@ aur_build() {
   # Fallback without a helper: clone each package, build and install with makepkg.
   local pkg tmp rc=0
   enable_nopasswd || return 1
-  mkdir -p /tmp/aur-build
+  # git clones into this as the user, so it must not be root-owned.
+  install -d -o "$user" -g "$user" /tmp/aur-build
   for pkg in "$@"; do
     tmp="/tmp/aur-build/$pkg"
     printf '=== %s: makepkg %s\n' "$(date -Is)" "$pkg" >> "$aur_log"
@@ -328,6 +358,9 @@ gtk-font-name=Noto Sans 10
 gtk-application-prefer-dark-theme=@@PREFER_DARK@@
 CFG
   done
+  # GTK falls back to Adwaita on its own if the theme package failed to build.
+  [ -d "/usr/share/themes/@@GTK@@" ] \
+    || warn 'GTK theme @@GTK@@ is missing; GTK apps keep the default theme'
 
   # Applying the look-and-feel (panels/layout) and the wallpaper both need a
   # running session, so defer them to the first login and drop the autostart
@@ -404,14 +437,14 @@ install_node
 configure_groups
 
 if @@WANT_THEME@@; then
-  if [ ! -d /usr/share/themes/@@GTK@@ ]; then
+  if [ ! -d "/usr/share/plasma/desktoptheme/@@PLASMA@@" ] || [ ! -d "/usr/share/themes/@@GTK@@" ]; then
     if ! command -v yay >/dev/null 2>&1 || ! install_aur \
         whitesur-gtk-theme whitesur-icon-theme whitesur-cursor-theme-git whitesur-kde-theme; then
       warn 'installing WhiteSur directly with makepkg'
       aur_build whitesur-gtk-theme whitesur-icon-theme whitesur-cursor-theme-git whitesur-kde-theme
     fi
   fi
-  if [ -d /usr/share/themes/@@GTK@@ ]; then
+  if [ -d "/usr/share/plasma/desktoptheme/@@PLASMA@@" ] || [ -d "/usr/share/themes/@@GTK@@" ]; then
     apply_theme
   else
     warn 'WhiteSur theme is not installed; desktop keeps its default look'
@@ -424,6 +457,8 @@ exit 0
 
 def extras_script():
     """Build the chroot script that installs yay, AUR apps and the theme."""
+    if not USERNAME:
+        die("extras_script() needs a resolved USERNAME (prompt runs in main)")
     theme = THEMES[THEME_VARIANT]
     script = EXTRAS_SCRIPT
     for token, value in {
@@ -450,7 +485,7 @@ def extras_script():
 
 
 def main():
-    global DISK, HOSTNAME
+    global DISK, HOSTNAME, USERNAME
 
     if os.geteuid() != 0:
         die("run as root from the Arch ISO")
@@ -461,8 +496,7 @@ def main():
     if THEME_VARIANT not in THEMES:
         die(f"THEME_VARIANT must be one of {', '.join(THEMES)}, got {THEME_VARIANT!r}")
     HOSTNAME = ask_hostname()
-    if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}\$?", USERNAME):
-        die(f"invalid username: {USERNAME!r}")
+    USERNAME = ask_username()
     if not (Path("/usr/share/zoneinfo") / TIMEZONE).exists():
         die(f"invalid timezone: {TIMEZONE!r}")
     if KB_LAYOUT not in run("localectl", "--no-pager", "list-keymaps").splitlines():
