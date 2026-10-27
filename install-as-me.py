@@ -369,6 +369,26 @@ QML
   done
 }
 
+patch_lnf_layout() {
+  # The WhiteSur layout instantiates org.kde.plasma.splitdigitalclock, a KDE
+  # Store applet that no repository packages, so applying the look-and-feel
+  # fails with "could not find requested component". The stock digital clock
+  # accepts the same configuration keys (showDate, use24hFormat, fontFamily).
+  local js src="$home/.config/plasma-org.kde.plasma.desktop-appletsrc"
+  for js in /usr/share/plasma/look-and-feel/com.github.vinceliuice.WhiteSur*/contents/layouts/*.js; do
+    [ -f "$js" ] || continue
+    grep -q 'splitdigitalclock' "$js" || continue
+    sed -i 's/org\.kde\.plasma\.splitdigitalclock/org.kde.plasma.digitalclock/g' "$js" \
+      || { warn "could not patch $js"; continue; }
+    printf '=== %s: patched layout %s\n' "$(date -Is)" "$js" >> "$aur_log"
+  done
+  # Repair a panel that was already built from the broken layout.
+  if [ -f "$src" ] && grep -q 'splitdigitalclock' "$src"; then
+    sed -i 's/plugin=org\.kde\.plasma\.splitdigitalclock/plugin=org.kde.plasma.digitalclock/' "$src" \
+      || warn 'could not patch the existing desktop layout'
+  fi
+}
+
 apply_theme() {
   local cfg="$home/.config"
   install -d "$cfg/gtk-3.0" "$cfg/gtk-4.0" "$cfg/Kvantum" "$cfg/autostart" "$home/.local/bin"
@@ -522,6 +542,7 @@ if @@WANT_THEME@@; then
   if [ -d "/usr/share/plasma/desktoptheme/@@PLASMA@@" ] || [ -d "/usr/share/themes/@@GTK@@" ]; then
     apply_theme
     patch_sddm_theme
+    patch_lnf_layout
   else
     warn 'WhiteSur theme is not installed; desktop keeps its default look'
   fi
@@ -772,6 +793,8 @@ def main():
         "qemu-full",
         "virt-manager",
         "tailscale",
+        # org.kde.milou applet used by the WhiteSur desktop layout
+        "milou",
         *EXTRA_PACKAGES,
     ]
     if nvidia_open:
