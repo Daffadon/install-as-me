@@ -306,14 +306,6 @@ configure_groups() {
   fi
 }
 
-dconf_write() {
-  # gvfs prints "A connection to the bus can't be made" on a private bus even
-  # when the write succeeds, so only surface output when dconf actually fails.
-  local out
-  out=$(runuser -u "$user" -- env HOME="$home" dbus-run-session -- \
-    dconf write "$1" "$2" 2>&1) || warn "dconf write $1 failed: $out"
-}
-
 apply_theme() {
   local cfg="$home/.config"
   install -d "$cfg/gtk-3.0" "$cfg/gtk-4.0" "$cfg/Kvantum" "$cfg/autostart" "$home/.local/bin"
@@ -404,17 +396,29 @@ SH
 Current=@@SDDM@@
 CFG
 
-  # Cinnamon keeps its appearance in dconf, which needs a session bus.
-  if command -v dconf >/dev/null 2>&1 && command -v dbus-run-session >/dev/null 2>&1; then
-    dconf_write /org/cinnamon/desktop/interface/gtk-theme "'@@GTK@@'"
-    dconf_write /org/cinnamon/desktop/interface/icon-theme "'@@ICONS@@'"
-    dconf_write /org/cinnamon/desktop/interface/cursor-theme "'WhiteSur-cursors'"
-    dconf_write /org/cinnamon/theme/name "'@@GTK@@'"
-    dconf_write /org/cinnamon/desktop/background/picture-uri \
-      "'file:///usr/share/wallpapers/@@WALLPAPER@@/contents/images/3840x2160.jpg'"
+  # Cinnamon reads dconf. Use a system database instead of a per-user write:
+  # dbus-run-session never returns while gvfs daemons linger, which hung the
+  # installer inside the chroot.
+  install -d /etc/dconf/db/local.d /etc/dconf/profile
+  cat > /etc/dconf/db/local.d/00-whitesur <<'CFG'
+[org/cinnamon/desktop/interface]
+gtk-theme='@@GTK@@'
+icon-theme='@@ICONS@@'
+cursor-theme='WhiteSur-cursors'
+
+[org/cinnamon/theme]
+name='@@GTK@@'
+
+[org/cinnamon/desktop/background]
+picture-uri='file:///usr/share/wallpapers/@@WALLPAPER@@/contents/images/3840x2160.jpg'
+CFG
+  if [ -f /etc/dconf/profile/user ]; then
+    grep -q '^system-db:local$' /etc/dconf/profile/user \
+      || printf 'system-db:local\n' >> /etc/dconf/profile/user
   else
-    warn 'dconf/dbus-run-session missing; Cinnamon keeps the default look'
+    printf 'user-db:user\nsystem-db:local\n' > /etc/dconf/profile/user
   fi
+  dconf update 2>/dev/null || warn 'dconf update failed; Cinnamon keeps the default look'
 
   chown -R "$user:$user" "$home/.config" "$home/.local"
   # Mirror only what was written here; copying the whole .config would leak
