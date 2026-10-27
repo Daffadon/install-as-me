@@ -334,6 +334,41 @@ configure_groups() {
   fi
 }
 
+patch_sddm_theme() {
+  # Plasma/SDDM >= 6.8 dropped the VirtualKeyboardLoader type from
+  # org.kde.breeze.components, but the packaged WhiteSur greeter still
+  # instantiates it, so the entire login screen falls back with
+  # "VirtualKeyboardLoader is not a type". Provide the type from the theme's own
+  # directory (implicit import) and keep the on-screen keyboard disabled.
+  local dir
+  for dir in /usr/share/sddm/themes/WhiteSur*; do
+    [ -f "$dir/Main.qml" ] || continue
+    grep -q 'VirtualKeyboardLoader' "$dir/Main.qml" || continue
+    if [ -f "$dir/VirtualKeyboardLoader.qml" ] \
+        && ! grep -q 'Compatibility shim' "$dir/VirtualKeyboardLoader.qml"; then
+      continue
+    fi
+    cat > "$dir/VirtualKeyboardLoader.qml" <<'QML'
+// Compatibility shim for SDDM/Plasma >= 6.8, which removed the
+// VirtualKeyboardLoader type from org.kde.breeze.components while the WhiteSur
+// greeter still instantiates it. Declares the surface Main.qml uses and keeps
+// the on-screen keyboard disabled instead of failing to load the login screen.
+import QtQuick
+
+Item {
+    property var screenRoot
+    property var mainStack
+    property var mainBlock
+    property var passwordField
+    property bool keyboardActive: false
+    function showHide() {}
+    visible: false
+}
+QML
+    printf '=== %s: patched SDDM theme %s\n' "$(date -Is)" "$dir" >> "$aur_log"
+  done
+}
+
 apply_theme() {
   local cfg="$home/.config"
   install -d "$cfg/gtk-3.0" "$cfg/gtk-4.0" "$cfg/Kvantum" "$cfg/autostart" "$home/.local/bin"
@@ -486,6 +521,7 @@ if @@WANT_THEME@@; then
   fi
   if [ -d "/usr/share/plasma/desktoptheme/@@PLASMA@@" ] || [ -d "/usr/share/themes/@@GTK@@" ]; then
     apply_theme
+    patch_sddm_theme
   else
     warn 'WhiteSur theme is not installed; desktop keeps its default look'
   fi
