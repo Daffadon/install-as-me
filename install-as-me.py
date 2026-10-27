@@ -477,6 +477,13 @@ DESKTOP
       || warn 'could not set kdeglobals TerminalApplication'
   fi
 
+  # Starship drives the bash prompt; zsh keeps powerlevel10k, so the two never
+  # fight over the same shell.
+  if [ -f "$home/.bashrc" ] && ! grep -q 'starship init bash' "$home/.bashrc"; then
+    printf '\n# starship prompt (zsh uses powerlevel10k)\ncommand -v starship >/dev/null && eval "$(starship init bash)"\n' \
+      >> "$home/.bashrc"
+  fi
+
   grep -qx /usr/bin/zsh /etc/shells 2>/dev/null \
     || printf '/usr/bin/zsh\n' >> /etc/shells
   usermod -s /usr/bin/zsh "$user" || warn 'could not set zsh as the login shell'
@@ -1004,6 +1011,7 @@ def main():
         "bind",
         # shell
         "zsh",
+        "starship",
         "zsh-completions",
         "zsh-autosuggestions",
         "zsh-syntax-highlighting",

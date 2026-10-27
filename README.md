@@ -81,13 +81,15 @@ ufw.
 | Terminal | `ghostty`, `neovim`, `tmux`, `fzf`, `ripgrep`, `fd`, `jq`, `eza`, `bat`, `zoxide`, `bind` (`dig`, `host`, `nslookup`) |
 | Integration | `gst-plugins-good`/`bad`/`ugly`, `gst-libav`, `7zip`, `unrar`, `gvfs-mtp`, `gvfs-gphoto2`, `noto-fonts-cjk`, `lm_sensors`, `wl-clipboard` |
 | Toolchains | `go`, `uv` (Python), `bun` (JS/TS), `nvm` with Node LTS, `dbeaver` (SQL client) |
-| Shell | `zsh` + oh-my-zsh (git clone), powerlevel10k (AUR), zsh completions/autosuggestions/syntax-highlighting/history-substring-search, MesloLGS NF + JetBrains Mono Nerd fonts |
+| Shell | `zsh` + oh-my-zsh (git clone), powerlevel10k (AUR), zsh completions/autosuggestions/syntax-highlighting/history-substring-search, MesloLGS NF + JetBrains Mono Nerd fonts; `starship` drives the bash prompt |
 | Containers / VMs | `docker`, `qemu-full`, `virt-manager` (`libvirtd` enabled, user in the `libvirt` group, NAT network autostart) |
 | Remote / network | `openssh`, `tailscale`, `cloudflare-warp-bin` (AUR) |
 | Theme | `whitesur-gtk-theme`, `whitesur-icon-theme`, `whitesur-cursor-theme-git`, `whitesur-kde-theme`, `kvantum`, `milou` (search applet used by the WhiteSur panel layout) |
 
 **Services enabled:** `sshd`, `docker`, `libvirtd`, `tailscaled`, plus `bluetooth` via
-archinstall's Bluetooth option; `ufw allow 22/tcp`.
+archinstall's Bluetooth option; `ufw allow 22/tcp`. Audio is the full PipeWire stack
+(`pipewire`, `pipewire-pulse`, `pipewire-alsa`, `pipewire-jack`, `wireplumber`,
+`gst-plugin-pipewire`) with the user units enabled by archinstall.
 
 **Baseline:** `git`, `sudo`, `openssh`, `mesa`, `mesa-utils`. GPU extras follow
 the detected hardware: `nvidia-settings` + `nvidia-prime` with the open kernel
