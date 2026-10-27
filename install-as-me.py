@@ -105,6 +105,33 @@ def pick_disk():
     return Path(selected[0].device_info.path)
 
 
+def validate_packages(packages):
+    """Fail before the disk is touched if a package is unknown to the repos.
+
+    archinstall only reports "target not found" after partitioning and wiping,
+    which is far too late; the ISO ships a pacman with the same repos.
+    """
+    try:
+        run("pacman", "-Sy")
+    except subprocess.CalledProcessError as err:
+        print(f"WARNING: pacman -Sy failed ({err}); skipping package validation")
+        return
+    missing = [
+        name
+        for name in packages
+        if subprocess.run(
+            ["pacman", "-Si", name], capture_output=True, text=True
+        ).returncode
+        != 0
+    ]
+    if missing:
+        die(
+            "unknown package(s) for this ISO's repositories: "
+            + ", ".join(missing)
+            + " (check with: pacman -Si <name>)"
+        )
+
+
 def ask_hostname():
     default = HOSTNAME or ""
     while True:
@@ -555,7 +582,6 @@ def main():
         "mesa-utils",
         "openssh",
         "kvantum",
-        "gtk-engine-murrine",
         # desktop apps
         "vlc",
         "libreoffice-fresh",
@@ -589,6 +615,8 @@ def main():
             ]
         if has_amd:
             packages += ["vulkan-radeon", "xf86-video-amdgpu"]
+
+    validate_packages(packages)
 
     config = {
         "hostname": HOSTNAME,
