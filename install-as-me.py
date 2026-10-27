@@ -344,15 +344,19 @@ install_node() {
     || warn 'nvm: Node.js LTS install failed (run: nvm install --lts)'
 }
 
+enable_unit() {
+  # A unit that does not exist yet in archinstall's services list aborts the
+  # whole install, so optional ones are enabled here, after their package (AUR
+  # or repo) has landed.
+  [ -f "/usr/lib/systemd/system/$1" ] || return 0
+  stream systemctl enable "$1" || warn "could not enable $1"
+}
+
 enable_optional_services() {
-  # Cloudflare WARP only exists once its AUR package is installed, and a
-  # missing unit in the archinstall services list aborts the whole install, so
-  # enable it here instead.
-  if [ -f /usr/lib/systemd/system/warp-svc.service ] \
-      || [ -f /usr/lib/systemd/system/warp-svc.service.masked ]; then
-    stream systemctl enable warp-svc \
-      || warn 'could not enable warp-svc'
-  fi
+  enable_unit warp-svc.service
+  enable_unit reflector.timer
+  enable_unit paccache.timer
+  enable_unit pkgfile-update.timer
 }
 
 configure_bootloader() {
@@ -1006,6 +1010,16 @@ def main():
         "go",
         "uv",
         "bun",
+        # system maintenance
+        "reflector",
+        "pacman-contrib",
+        "rebuild-detector",
+        "pkgfile",
+        "man-db",
+        "zip",
+        "unzip",
+        "ntfs-3g",
+        "fastfetch",
         # containers, VMs, networking
         "docker",
         "qemu-full",

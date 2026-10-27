@@ -82,12 +82,14 @@ ufw.
 | Integration | `gst-plugins-good`/`bad`/`ugly`, `gst-libav`, `7zip`, `unrar`, `gvfs-mtp`, `gvfs-gphoto2`, `noto-fonts-cjk`, `lm_sensors`, `wl-clipboard` |
 | Toolchains | `go`, `uv` (Python), `bun` (JS/TS), `nvm` with Node LTS, `dbeaver` (SQL client) |
 | Shell | `zsh` + oh-my-zsh (git clone), `starship` prompt, zsh completions/autosuggestions/syntax-highlighting/history-substring-search, JetBrains Mono Nerd font |
+| Maintenance | `reflector`, `pacman-contrib`, `rebuild-detector`, `pkgfile`, `man-db`, `zip`, `unzip`, `ntfs-3g`, `fastfetch` |
 | Containers / VMs | `docker`, `qemu-full`, `virt-manager` (`libvirtd` enabled, user in the `libvirt` group, NAT network autostart) |
 | Remote / network | `openssh`, `tailscale`, `cloudflare-warp-bin` (AUR) |
 | Theme | `whitesur-gtk-theme`, `whitesur-icon-theme`, `whitesur-cursor-theme-git`, `whitesur-kde-theme`, `kvantum`, `milou` (search applet used by the WhiteSur panel layout) |
 
 **Services enabled:** `sshd`, `docker`, `libvirtd`, `tailscaled`, plus `bluetooth` via
-archinstall's Bluetooth option; `ufw allow 22/tcp`. Audio is the full PipeWire stack
+archinstall's Bluetooth option, and the `reflector`/`paccache`/`pkgfile-update`
+timers when those packages are present; `ufw allow 22/tcp`. Audio is the full PipeWire stack
 (`pipewire`, `pipewire-pulse`, `pipewire-alsa`, `pipewire-jack`, `wireplumber`,
 `gst-plugin-pipewire`) with the user units enabled by archinstall.
 
