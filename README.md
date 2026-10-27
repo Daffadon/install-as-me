@@ -85,7 +85,8 @@ ufw.
 | Remote / network | `openssh`, `tailscale`, `cloudflare-warp-bin` (AUR) |
 | Theme | `whitesur-gtk-theme`, `whitesur-icon-theme`, `whitesur-cursor-theme-git`, `whitesur-kde-theme`, `kvantum`, `milou` (search applet used by the WhiteSur panel layout) |
 
-**Services enabled:** `sshd`, `docker`, `libvirtd`, `tailscaled`; `ufw allow 22/tcp`.
+**Services enabled:** `sshd`, `docker`, `libvirtd`, `tailscaled`, plus `bluetooth` via
+archinstall's Bluetooth option; `ufw allow 22/tcp`.
 
 **Baseline:** `git`, `sudo`, `openssh`, `mesa`, `mesa-utils`. GPU extras follow
 the detected hardware: `nvidia-settings` + `nvidia-prime` with the open kernel

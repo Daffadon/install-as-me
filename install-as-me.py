@@ -923,6 +923,10 @@ def main():
         "openssh",
         "sudo",
         "kvantum",
+        # archinstall's bluetooth_config already pulls these in; listed
+        # explicitly so bluetoothctl is guaranteed
+        "bluez",
+        "bluez-utils",
         # desktop apps
         "vlc",
         "libreoffice-fresh",
