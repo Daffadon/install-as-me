@@ -38,6 +38,8 @@ THEME_VARIANT = os.environ.get("THEME_VARIANT", "dark").strip().lower()
 # through yay (AUR only, or repo names as a fallback).
 EXTRA_PACKAGES = os.environ.get("EXTRA_PACKAGES", "").split()
 EXTRA_AUR = os.environ.get("EXTRA_AUR", "").split()
+# Desktop session SDDM preselects (file name in /usr/share/wayland-sessions).
+SESSION = os.environ.get("SESSION", "plasma")
 # Zen Browser ships as a binary AUR package; everything else below is in extra.
 AUR_PACKAGES = ["zen-browser-bin", "onlyoffice-bin", *EXTRA_AUR]
 WORKDIR = Path("/root/archinstall-daffaputra")
@@ -197,6 +199,17 @@ aur_fail() {
   return 0
 }
 
+have_space() {
+  # zen-browser-bin alone downloads ~110 MiB and unpacks more; running out
+  # midway leaves half-built trees behind, so bail out early instead.
+  local avail
+  avail=$(df -Pm "$home" 2>/dev/null | awk 'NR == 2 {print $4}')
+  if [ -z "$avail" ] || [ "$avail" -lt 2048 ]; then
+    warn "only ${avail:-0} MiB free in $home; skipping the AUR builds"
+    return 1
+  fi
+}
+
 # sshd is enabled by default, but archinstall's ufw setup denies inbound traffic.
 if command -v ufw >/dev/null 2>&1; then
   ufw allow 22/tcp >/dev/null 2>&1 || warn 'could not open the SSH port in ufw'
@@ -210,11 +223,14 @@ install_yay() {
     return 1
   fi
 
-  # makepkg refuses to run as root: build as the user, install as root.
-  local tmp=/tmp/yay-bin
+  # Build inside the user's home: /tmp is a small, not necessarily user-writable
+  # tmpfs while the ISO's chroot is active (it filled up mid-build otherwise).
+  local tmp="$home/.cache/yay-bin"
   printf '=== %s: bootstrap yay-bin\n' "$(date -Is)" >> "$aur_log"
+  have_space || return 1
   pacman -S --needed --noconfirm base-devel git >> "$aur_log" 2>&1 \
     || { aur_fail 'base-devel/git install failed'; return 1; }
+  install -d -o "$user" -g "$user" "$home/.cache"
   rm -rf "$tmp"
   runuser -u "$user" -- env HOME="$home" git clone --depth 1 \
     https://aur.archlinux.org/yay-bin.git "$tmp" >> "$aur_log" 2>&1 \
@@ -251,10 +267,11 @@ aur_build() {
   # Fallback without a helper: clone each package, build and install with makepkg.
   local pkg tmp rc=0
   enable_nopasswd || return 1
-  # git clones into this as the user, so it must not be root-owned.
-  install -d -o "$user" -g "$user" /tmp/aur-build
+  have_space || return 1
+  # Same reason as install_yay: keep sources off the chroot's tmpfs.
+  install -d -o "$user" -g "$user" "$home/.cache/aur-build"
   for pkg in "$@"; do
-    tmp="/tmp/aur-build/$pkg"
+    tmp="$home/.cache/aur-build/$pkg"
     printf '=== %s: makepkg %s\n' "$(date -Is)" "$pkg" >> "$aur_log"
     rm -rf "$tmp"
     if ! runuser -u "$user" -- env HOME="$home" git clone --depth 1 \
@@ -268,10 +285,21 @@ aur_build() {
       aur_fail "build failed for $pkg"
       rc=1
     fi
+    rm -rf "$tmp"
   done
-  rm -rf /tmp/aur-build
+  rmdir "$home/.cache/aur-build" 2>/dev/null
   rm -f "$sudoers_dropin"
   return "$rc"
+}
+
+configure_session() {
+  # SDDM preselects the first session it finds (Cinnamon here); point it at the
+  # Plasma Wayland session so KDE, with the WhiteSur look, is the default.
+  local session="/usr/share/wayland-sessions/@@SESSION@@.desktop"
+  [ -f "$session" ] || return 0
+  install -d /var/lib/sddm
+  printf '[Last]\nUser=%s\nSession=%s\n' "$user" "$session" > /var/lib/sddm/state.conf
+  chown sddm:sddm /var/lib/sddm/state.conf 2>/dev/null || true
 }
 
 install_node() {
@@ -446,6 +474,7 @@ fi
 
 install_node
 configure_groups
+configure_session
 
 if @@WANT_THEME@@; then
   if [ ! -d "/usr/share/plasma/desktoptheme/@@PLASMA@@" ] || [ ! -d "/usr/share/themes/@@GTK@@" ]; then
@@ -487,6 +516,7 @@ def extras_script():
         "WANT_YAY": "true" if INSTALL_YAY else "false",
         "WANT_THEME": "true" if INSTALL_THEME else "false",
         "WANT_APPS": "true" if AUR_PACKAGES else "false",
+        "SESSION": SESSION,
         "AUR_PACKAGES": " ".join(AUR_PACKAGES),
     }.items():
         script = script.replace(f"@@{token}@@", value)
