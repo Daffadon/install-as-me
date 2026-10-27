@@ -27,7 +27,7 @@ TIMEZONE = os.environ.get("TIMEZONE", "Asia/Jakarta")
 KB_LAYOUT = os.environ.get("KB_LAYOUT", "us")
 SYS_LANG = os.environ.get("SYS_LANG", "en_US.UTF-8")
 SYS_ENC = os.environ.get("SYS_ENC", "UTF-8")
-KERNELS = os.environ.get("KERNELS", "linux").split()
+KERNELS = os.environ.get("KERNELS", "linux-zen").split()
 SNAPPER = os.environ.get("SNAPPER", "0") == "1"
 LUKS = os.environ.get("LUKS", "0") == "1"
 NVIDIA_OPEN = os.environ.get("NVIDIA_OPEN", "auto")

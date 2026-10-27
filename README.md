@@ -45,7 +45,7 @@ All settings are environment variables; nothing is edited in the script.
 | `TIMEZONE` | `Asia/Jakarta` | Validated against `/usr/share/zoneinfo` |
 | `KB_LAYOUT` | `us` | Validated against `localectl list-keymaps` |
 | `SYS_LANG` / `SYS_ENC` | `en_US.UTF-8` / `UTF-8` | Locale |
-| `KERNELS` | `linux` | Space separated kernel packages |
+| `KERNELS` | `linux-zen` | Space separated kernel packages, e.g. `linux linux-zen` |
 | `SNAPPER` | `0` | `1` enables btrfs snapshots via Snapper |
 | `LUKS` | `0` | `1` encrypts the root partition |
 | `NVIDIA_OPEN` | `auto` | `1`/`0` to skip the Turing+ question |
@@ -90,6 +90,10 @@ ufw.
 the detected hardware: `nvidia-settings` + `nvidia-prime` with the open kernel
 modules, plus `vulkan-intel`/`intel-media-driver`/`libva-intel-driver` or
 `vulkan-radeon`/`xf86-video-amdgpu` for a hybrid iGPU.
+
+**Kernel:** `linux-zen` by default. archinstall builds NVIDIA modules as
+`nvidia-open-dkms` plus `<kernel>-headers` whenever the selected kernel name
+contains a dash, so a non-mainline kernel still gets working modules.
 
 ## Post-install pass
 
