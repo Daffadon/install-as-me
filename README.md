@@ -81,7 +81,7 @@ ufw.
 | Terminal | `ghostty`, `neovim`, `tmux`, `fzf`, `ripgrep`, `fd`, `jq`, `eza`, `bat`, `zoxide`, `bind` (`dig`, `host`, `nslookup`) |
 | Integration | `gst-plugins-good`/`bad`/`ugly`, `gst-libav`, `7zip`, `unrar`, `gvfs-mtp`, `gvfs-gphoto2`, `noto-fonts-cjk`, `lm_sensors`, `wl-clipboard` |
 | Toolchains | `go`, `uv` (Python), `bun` (JS/TS), `nvm` with Node LTS, `dbeaver` (SQL client) |
-| Shell | `zsh` + oh-my-zsh (git clone), powerlevel10k (AUR), zsh completions/autosuggestions/syntax-highlighting/history-substring-search, MesloLGS NF + JetBrains Mono Nerd fonts; `starship` drives the bash prompt |
+| Shell | `zsh` + oh-my-zsh (git clone), `starship` prompt, zsh completions/autosuggestions/syntax-highlighting/history-substring-search, JetBrains Mono Nerd font |
 | Containers / VMs | `docker`, `qemu-full`, `virt-manager` (`libvirtd` enabled, user in the `libvirt` group, NAT network autostart) |
 | Remote / network | `openssh`, `tailscale`, `cloudflare-warp-bin` (AUR) |
 | Theme | `whitesur-gtk-theme`, `whitesur-icon-theme`, `whitesur-cursor-theme-git`, `whitesur-kde-theme`, `kvantum`, `milou` (search applet used by the WhiteSur panel layout) |
@@ -122,8 +122,8 @@ no terminal is attached.
   look-and-feel layout + wallpaper on the first Plasma login.
 - **Terminal** — Ctrl+Alt+T bound to Ghostty in `kglobalshortcutsrc`,
   `TerminalApplication=ghostty` in `kdeglobals`.
-- **Shell** — oh-my-zsh, `.zshrc`, `~/.p10k.zsh` (lean preset), zsh as login
-  shell; files are only written when absent.
+- **Shell** — oh-my-zsh, `.zshrc` with the starship prompt, zsh as login shell
+  (so Ghostty starts zsh); files are only written when absent.
 - **Groups** — the user joins `docker` and `libvirt`; the libvirt NAT network is
   marked autostart.
 - **Dual boot** — with GRUB installed: `GRUB_DISABLE_OS_PROBER=false`, timeout

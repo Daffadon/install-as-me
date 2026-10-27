@@ -48,8 +48,6 @@ AUR_PACKAGES = [
     "zen-browser-bin",
     "onlyoffice-bin",
     "cloudflare-warp-bin",
-    "zsh-theme-powerlevel10k-git",
-    "ttf-meslo-nerd-font-powerlevel10k",
     *EXTRA_AUR,
 ]
 WORKDIR = Path("/root/archinstall-daffaputra")
@@ -389,7 +387,7 @@ configure_bootloader() {
 }
 
 configure_shell() {
-  local zshrc="$home/.zshrc" p10k="$home/.p10k.zsh"
+  local zshrc="$home/.zshrc"
   local ghostty="$home/.config/ghostty/config" ksrc="$home/.config/kglobalshortcutsrc"
 
   # oh-my-zsh from git so `omz update` keeps working (no pacman package).
@@ -414,10 +412,8 @@ plugins=(
 
 [ -f "$ZSH/oh-my-zsh.sh" ] && source "$ZSH/oh-my-zsh.sh"
 
-# powerlevel10k from the packaged theme (see zsh-theme-powerlevel10k-git)
-[ -f /usr/share/zsh-theme-powerlevel10k/powerlevel10k.zsh-theme ] \
-  && source /usr/share/zsh-theme-powerlevel10k/powerlevel10k.zsh-theme
-[[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh
+# starship prompt
+command -v starship >/dev/null && eval "$(starship init zsh)"
 
 # nvm
 [ -s /usr/share/nvm/init-nvm.sh ] && source /usr/share/nvm/init-nvm.sh
@@ -431,11 +427,6 @@ alias la='eza -la --icons --group-directories-first'
 alias cat='bat --paging=never'
 command -v zoxide >/dev/null && eval "$(zoxide init zsh)"
 ZSHRC
-  fi
-
-  # p10k ships ready-made configs; the lean preset is the least noisy.
-  if [ ! -f "$p10k" ] && [ -f /usr/share/zsh-theme-powerlevel10k/config/p10k-lean.zsh ]; then
-    cp /usr/share/zsh-theme-powerlevel10k/config/p10k-lean.zsh "$p10k"
   fi
 
   install -d "$home/.config/ghostty"
@@ -477,18 +468,11 @@ DESKTOP
       || warn 'could not set kdeglobals TerminalApplication'
   fi
 
-  # Starship drives the bash prompt; zsh keeps powerlevel10k, so the two never
-  # fight over the same shell.
-  if [ -f "$home/.bashrc" ] && ! grep -q 'starship init bash' "$home/.bashrc"; then
-    printf '\n# starship prompt (zsh uses powerlevel10k)\ncommand -v starship >/dev/null && eval "$(starship init bash)"\n' \
-      >> "$home/.bashrc"
-  fi
-
   grep -qx /usr/bin/zsh /etc/shells 2>/dev/null \
     || printf '/usr/bin/zsh\n' >> /etc/shells
   usermod -s /usr/bin/zsh "$user" || warn 'could not set zsh as the login shell'
 
-  chown -R "$user:$user" "$home/.config" "$home/.zshrc" "$home/.p10k.zsh" 2>/dev/null
+  chown -R "$user:$user" "$home/.config" "$home/.zshrc" 2>/dev/null
 }
 
 configure_groups() {
@@ -719,7 +703,7 @@ configure_groups
 phase "[6/9] default session: @@SESSION@@"
 configure_session
 
-phase "[7/9] shell: zsh, oh-my-zsh, powerlevel10k, ghostty, copyq"
+phase "[7/9] shell: zsh, oh-my-zsh, starship, ghostty, copyq"
 configure_shell
 
 phase "[8/9] bootloader: os-prober / grub"
