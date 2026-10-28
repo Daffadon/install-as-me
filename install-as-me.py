@@ -1043,6 +1043,11 @@ def main():
         "dbeaver",
         "nvm",
         "okular",
+        # GTK document/viewer pair for the Cinnamon session; KDE already has
+        # okular (PDF) and Dolphin opens gwenview
+        "evince",
+        "gwenview",
+        "eog",
         "thunderbird",
         "flameshot",
         "copyq",

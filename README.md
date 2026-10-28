@@ -77,7 +77,7 @@ ufw.
 
 | Group | Packages |
 |---|---|
-| Desktop apps | `vlc`, `libreoffice-fresh`, `obsidian`, `zed`, `okular`, `thunderbird`, `flameshot`, `copyq`, `onlyoffice-bin` (AUR), `zen-browser-bin` (AUR) |
+| Desktop apps | `vlc`, `libreoffice-fresh`, `obsidian`, `zed`, `okular`, `evince`, `gwenview`, `eog`, `thunderbird`, `flameshot`, `copyq`, `onlyoffice-bin` (AUR), `zen-browser-bin` (AUR) |
 | Terminal | `ghostty`, `neovim`, `tmux`, `fzf`, `ripgrep`, `fd`, `jq`, `eza`, `bat`, `zoxide`, `bind` (`dig`, `host`, `nslookup`) |
 | Integration | `gst-plugins-good`/`bad`/`ugly`, `gst-libav`, `7zip`, `unrar`, `gvfs-mtp`, `gvfs-gphoto2`, `noto-fonts-cjk`, `lm_sensors`, `wl-clipboard` |
 | Toolchains | `go`, `uv` (Python), `bun` (JS/TS), `nvm` with Node LTS, `dbeaver` (SQL client) |
