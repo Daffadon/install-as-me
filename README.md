@@ -122,8 +122,10 @@ no terminal is attached.
   Cinnamon settings via a dconf system database (`/etc/dconf/db/local.d`),
   `/etc/skel` mirror, and a one-shot autostart hook that applies the
   look-and-feel layout + wallpaper on the first Plasma login.
-- **Terminal** — Ctrl+Alt+T bound to Ghostty in `kglobalshortcutsrc`,
-  `TerminalApplication=ghostty` in `kdeglobals`.
+- **Terminal** — Ctrl+Alt+T bound to Ghostty in KDE's `kglobalshortcutsrc` and, because Cinnamon ignores
+  that file, as a dconf custom keybinding (`<Primary><Alt>t` plus `<Super>Return` as a fallback for
+  hosts/VMs that swallow the combo); `TerminalApplication=ghostty` in `kdeglobals` and
+  `org.cinnamon.desktop.default-applications.terminal` point the desktops at it.
 - **Shell** — oh-my-zsh, `.zshrc` with the starship prompt, zsh as login shell
   (so Ghostty starts zsh); files are only written when absent.
 - **Groups** — the user joins `docker` and `libvirt`; the libvirt NAT network is
@@ -169,6 +171,8 @@ Known caveats:
 - The WhiteSur panel layout asks for `org.kde.plasma.splitdigitalclock`, which no
   repository packages; the layout is rewritten to `org.kde.plasma.digitalclock`.
 - `steam` is not installed: it needs the `multilib` repository enabled.
+- Inside a VM, a shortcut can be eaten by the host before it reaches the guest. `Super+Enter`
+  is bound as the alternate terminal shortcut for that case.
 - Cloudflare WARP is installed and `warp-svc` is enabled, but the client still
   needs one manual registration: `warp-cli registration new`.
 

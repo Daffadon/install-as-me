@@ -40,6 +40,8 @@ EXTRA_PACKAGES = os.environ.get("EXTRA_PACKAGES", "").split()
 EXTRA_AUR = os.environ.get("EXTRA_AUR", "").split()
 # Desktop session SDDM preselects (file name in /usr/share/wayland-sessions).
 SESSION = os.environ.get("SESSION", "plasma")
+# Third-party BlackArch repository for security tooling (opt out with BLACKARCH=0).
+BLACKARCH = os.environ.get("BLACKARCH", "1") == "1"
 # Dual boot: use GRUB (the only bootloader that can list another OS) and
 # os-prober, so an existing Windows/other Linux appears in the menu.
 DUAL_BOOT = os.environ.get("DUAL_BOOT", "0") == "1"
@@ -204,15 +206,19 @@ aur_log=/var/log/postinstall-aur.log
 # archinstall captures the output of custom commands (SysCommand with
 # peek_output=False), so ordinary stdout never reaches the installer's console.
 # Write progress to /dev/tty as well, which is the terminal arch-chroot inherited.
+# -w is not enough: /dev/tty can exist yet fail to open when the process has no
+# controlling terminal, and the failed redirection would kill the whole pipeline.
+tty_ok() { { : >>/dev/tty; } 2>/dev/null; }
+
 say() {
   printf '%s\n' "$*" >> "$aur_log"
-  [ -w /dev/tty ] && printf '%s\n' "$*" > /dev/tty
+  tty_ok && printf '%s\n' "$*" > /dev/tty
   return 0
 }
 
 stream() {
   # Run a command, log everything and mirror it to the console when possible.
-  if [ -w /dev/tty ]; then
+  if tty_ok; then
     "$@" 2>&1 | tee -a "$aur_log" > /dev/tty
     return "${PIPESTATUS[0]}"
   fi
@@ -359,6 +365,30 @@ enable_optional_services() {
   enable_unit pkgfile-update.timer
 }
 
+configure_blackarch() {
+  # Adds the BlackArch repository the way upstream strap.sh does, minus the
+  # remote-code execution: mirror list, keyring, then signatures as usual.
+  grep -q '^\[blackarch\]' /etc/pacman.conf 2>/dev/null && return 0
+  say "    fetching https://blackarch.org/blackarch-mirrorlist"
+  stream curl -fsSL https://blackarch.org/blackarch-mirrorlist \
+    -o /etc/pacman.d/blackarch-mirrorlist \
+    || { warn 'could not fetch the BlackArch mirror list'; return 1; }
+
+  # TrustAll is only needed until blackarch-keyring is populated; the line is
+  # neutralised below so the repository inherits the global SigLevel afterwards.
+  printf '\n[blackarch]\nSigLevel = Optional TrustAll\nInclude = /etc/pacman.d/blackarch-mirrorlist\n' \
+    >> /etc/pacman.conf
+  stream pacman -Sy --noconfirm \
+    || warn 'pacman -Sy failed after adding BlackArch'
+  stream pacman -S --noconfirm --needed blackarch-keyring \
+    || { warn 'could not install blackarch-keyring'; return 1; }
+  stream pacman-key --populate blackarch \
+    || warn 'could not populate the BlackArch keyring'
+  sed -i '/^\[blackarch\]$/,/^Include = /{s/^SigLevel = Optional TrustAll$/# signature checks inherit the global SigLevel/}' \
+    /etc/pacman.conf
+  stream pacman -Sy --noconfirm || warn 'pacman -Sy failed after tightening BlackArch SigLevel'
+}
+
 configure_bootloader() {
   # archinstall writes /etc/default/grub but never enables os-prober, so with
   # GRUB installed a second operating system is simply missing from the menu.
@@ -419,6 +449,12 @@ plugins=(
 # starship prompt
 command -v starship >/dev/null && eval "$(starship init zsh)"
 
+# completion behaviour (zsh-completions provides the definitions via oh-my-zsh)
+zstyle ':completion:*' menu select
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}' 'r:|[._-]=* r:|=*'
+zstyle ':completion:*' use-cache on
+zstyle ':completion:*' cache-path "$HOME/.cache/zsh/compcache"
+
 # nvm
 [ -s /usr/share/nvm/init-nvm.sh ] && source /usr/share/nvm/init-nvm.sh
 
@@ -471,6 +507,30 @@ DESKTOP
       --file kdeglobals --group General --key TerminalApplication ghostty 2>/dev/null \
       || warn 'could not set kdeglobals TerminalApplication'
   fi
+
+  # Cinnamon ignores KDE's kglobalshortcutsrc, so the same binding has to exist
+  # in its own keybinding store; dconf_apply compiles it below.
+  install -d /etc/dconf/db/local.d
+  cat > /etc/dconf/db/local.d/01-terminal <<'DCONF'
+[org/cinnamon/desktop/keybindings]
+custom-list=['custom-ghostty','custom-ghostty-alt']
+
+[org/cinnamon/desktop/keybindings/custom-keybindings/custom-ghostty]
+name='Terminal'
+command='ghostty'
+binding=['<Primary><Alt>t']
+
+# second binding for hosts/VMs that swallow Ctrl+Alt+T
+[org/cinnamon/desktop/keybindings/custom-keybindings/custom-ghostty-alt]
+name='Terminal (Super+Enter)'
+command='ghostty'
+binding=['<Super>Return']
+
+[org/cinnamon/desktop/default-applications/terminal]
+exec='ghostty'
+exec-arg='-e'
+DCONF
+  dconf_apply
 
   grep -qx /usr/bin/zsh /etc/shells 2>/dev/null \
     || printf '/usr/bin/zsh\n' >> /etc/shells
@@ -549,6 +609,20 @@ patch_lnf_layout() {
     sed -i 's/plugin=org\.kde\.plasma\.splitdigitalclock/plugin=org.kde.plasma.digitalclock/' "$src" \
       || warn 'could not patch the existing desktop layout'
   fi
+}
+
+dconf_apply() {
+  # Compile every system-database fragment and make sure the user profile
+  # actually reads it. Callers: the theme (Cinnamon look) and the terminal
+  # keybinding; both write into /etc/dconf/db/local.d.
+  install -d /etc/dconf/db/local.d /etc/dconf/profile
+  if [ -f /etc/dconf/profile/user ]; then
+    grep -q '^system-db:local$' /etc/dconf/profile/user \
+      || printf 'system-db:local\n' >> /etc/dconf/profile/user
+  else
+    printf 'user-db:user\nsystem-db:local\n' > /etc/dconf/profile/user
+  fi
+  dconf update 2>/dev/null || warn 'dconf update failed; Cinnamon keeps its defaults'
 }
 
 apply_theme() {
@@ -644,7 +718,7 @@ CFG
   # Cinnamon reads dconf. Use a system database instead of a per-user write:
   # dbus-run-session never returns while gvfs daemons linger, which hung the
   # installer inside the chroot.
-  install -d /etc/dconf/db/local.d /etc/dconf/profile
+  install -d /etc/dconf/db/local.d
   cat > /etc/dconf/db/local.d/00-whitesur <<'CFG'
 [org/cinnamon/desktop/interface]
 gtk-theme='@@GTK@@'
@@ -657,13 +731,7 @@ name='@@GTK@@'
 [org/cinnamon/desktop/background]
 picture-uri='file:///usr/share/wallpapers/@@WALLPAPER@@/contents/images/3840x2160.jpg'
 CFG
-  if [ -f /etc/dconf/profile/user ]; then
-    grep -q '^system-db:local$' /etc/dconf/profile/user \
-      || printf 'system-db:local\n' >> /etc/dconf/profile/user
-  else
-    printf 'user-db:user\nsystem-db:local\n' > /etc/dconf/profile/user
-  fi
-  dconf update 2>/dev/null || warn 'dconf update failed; Cinnamon keeps the default look'
+  dconf_apply
 
   chown -R "$user:$user" "$home/.config" "$home/.local"
   # Mirror only what was written here; copying the whole .config would leak
@@ -679,12 +747,12 @@ say "==> post-install extras: up to 10 minutes. This is the installer output;"
 say "    the full log is kept at /var/log/postinstall-aur.log"
 say "    (from another TTY: /mnt/archinstall/var/log/postinstall-aur.log)"
 
-phase "[1/9] AUR helper (yay)"
+phase "[1/10] AUR helper (yay)"
 if @@WANT_YAY@@; then
   install_yay || warn 'yay is unavailable; AUR packages fall back to makepkg'
 fi
 
-phase "[2/9] AUR packages: @@AUR_PACKAGES@@"
+phase "[2/10] AUR packages: @@AUR_PACKAGES@@"
 if @@WANT_APPS@@; then
   if ! command -v yay >/dev/null 2>&1 || ! install_aur @@AUR_PACKAGES@@; then
     warn 'installing @@AUR_PACKAGES@@ directly with makepkg'
@@ -695,26 +763,31 @@ if @@WANT_APPS@@; then
   done
 fi
 
-phase "[3/9] Node.js LTS via nvm"
+phase "[3/10] Node.js LTS via nvm"
 install_node
 
-phase "[4/9] optional services"
+phase "[4/10] optional services"
 enable_optional_services
 
-phase "[5/9] groups: docker, libvirt"
+phase "[5/10] groups: docker, libvirt"
 configure_groups
 
-phase "[6/9] default session: @@SESSION@@"
+phase "[6/10] default session: @@SESSION@@"
 configure_session
 
-phase "[7/9] shell: zsh, oh-my-zsh, starship, ghostty, copyq"
+phase "[7/10] shell: zsh, oh-my-zsh, starship, ghostty, copyq"
 configure_shell
 
-phase "[8/9] bootloader: os-prober / grub"
+phase "[8/10] bootloader: os-prober / grub"
 configure_bootloader
 
 if @@WANT_THEME@@; then
-  phase "[9/9] WhiteSur theme (GTK, icons, Plasma, SDDM)"
+  phase "[9/10] BlackArch repository"
+if @@WANT_BLACKARCH@@; then
+  configure_blackarch
+fi
+
+phase "[10/10] WhiteSur theme (GTK, icons, Plasma, SDDM)"
   if [ ! -d "/usr/share/plasma/desktoptheme/@@PLASMA@@" ] || [ ! -d "/usr/share/themes/@@GTK@@" ]; then
     if ! command -v yay >/dev/null 2>&1 || ! install_aur \
         whitesur-gtk-theme whitesur-icon-theme whitesur-cursor-theme-git whitesur-kde-theme; then
@@ -760,6 +833,7 @@ def extras_script():
         "WANT_APPS": "true" if AUR_PACKAGES else "false",
         "SESSION": SESSION,
         "AUR_PACKAGES": " ".join(AUR_PACKAGES),
+        "WANT_BLACKARCH": "true" if BLACKARCH else "false",
     }.items():
         script = script.replace(f"@@{token}@@", value)
     if "@@" in script:
